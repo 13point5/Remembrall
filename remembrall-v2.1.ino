@@ -4,8 +4,8 @@
 #include <ArduinoJson.h>
 
 // WiFi credentials
-const char* ssid = "*****";
-const char* password = "****";
+const char* ssid = "*******";
+const char* password = "********";
 
 // ThingSpeak constants
 const char* thingspeak_host = "api.thingspeak.com";
@@ -22,6 +22,8 @@ volatile bool button_state = false;
 int bufferTime = 10;
 int rled = 14;
 int value=0;
+  
+const int httpPort = 80;
 
 String total_tasks="";
 
@@ -29,8 +31,6 @@ unsigned long previousMillis = 0;
 
 const int interval = 30000;
 
-// Use WiFiClient class to create TCP connections
-WiFiClient Client;
 
 void setup() {
   pinMode(rled, OUTPUT);
@@ -50,7 +50,6 @@ void loop() {
   unsigned long currentMillis = millis();
 
   if (currentMillis - previousMillis >= interval) {
-    // save the time you should have toggled the LED
     previousMillis += interval;
     total_tasks = checkTasks();
   }
@@ -74,11 +73,12 @@ void buttonPressed() {
 
 
 String checkTasks(){
+  // Use WiFiClient class to create TCP connections
+  WiFiClient Client;
+  
   Serial.print("Connecting to ");
   Serial.println(thingspeak_host);
-  
-  
-  const int httpPort = 80;
+
   if (!Client.connect(thingspeak_host, httpPort)) {
     Serial.println("Connection failed");
     return "";
@@ -129,6 +129,8 @@ String checkTasks(){
         }
         
       }
+
+      Client.stop();
 
       if(numNuls==0){
         analogWrite(rled, 1023);
