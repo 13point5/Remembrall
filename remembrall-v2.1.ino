@@ -4,8 +4,8 @@
 #include <ArduinoJson.h>
 
 // WiFi credentials
-const char* ssid = "RANASRIVIJAY";
-const char* password = "srivijay2818";
+const char* ssid = "*****";
+const char* password = "****";
 
 // ThingSpeak constants
 const char* thingspeak_host = "api.thingspeak.com";
