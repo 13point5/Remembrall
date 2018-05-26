@@ -4,230 +4,228 @@
 #include <ArduinoJson.h>
 
 // WiFi credentials
-const char* ssid = "*******";
-const char* password = "********";
+const char* ssid = "******";                           // TODO: Enter your WiFi ssid
+const char* password = "******";                       // TODO: Enter your WiFi password
 
-// ThingSpeak constants
-const char* thingspeak_host = "api.thingspeak.com";
-String thingspeak_url = "/apps/thinghttp/send_request?api_key=QXF2AOP7XGCZS0GV";
+// ThingHTTP
+const char* thinghttp_host = "api.thinghttp.com";
+String thinghttp_API_KEY = "****************";         // TODO: Enter your ThingHTTP app API key
+String thinghttp_url = "/apps/thinghttp/send_request?api_key=" + thinghttp_API_KEY;
 
-// PushingBox scenario DeviceId code and API
-String deviceId = "vF7445223F89E75D";
+// PushingBox
+String deviceId = "****************";                  // TODO: Enter your PushingBox DeviceID
 const char* logServer = "api.pushingbox.com";
 
-// button
-const int buttonPin = 12;
+// Button
+const int buttonPin = 12; // Button pin: D6 on NodemCU to send notifications
 volatile bool button_state = false;
 
-int bufferTime = 10;
-int rled = 14;
-int value=0;
-  
-const int httpPort = 80;
+// To avoid Soft Reset
+unsigned long previousMillis = 0; // To avoid Soft Reset
+unsigned long currentMillis;
+const int interval = 30 * 1000; // The Remembrall checks for due tasks every 30s
 
-String total_tasks="";
-
-unsigned long previousMillis = 0;
-
-const int interval = 30000;
+// Miscellaneous Declarations
+int bufferTime = 10; // If any task is due after bufferTime(minutes) then the Remembrall will be triggered
+int rled = 14; // LED pin: D5 on NodeMCU used for You_Know_What
+const int httpPort = 80; // Port 80 is used for HTTP requests
+String total_tasks=""; // Stores the tasks that is sent via PushBullet
 
 
 void setup() {
+  Serial.begin(115200);
   pinMode(rled, OUTPUT);
   pinMode(buttonPin, INPUT);
 
-  attachInterrupt(buttonPin, buttonPressed, RISING);
-  
-  Serial.begin(115200); 
-  Serial.println(); 
-  initWifi();
-
-  total_tasks = checkTasks();
+  attachInterrupt(buttonPin, buttonPressed, RISING); // Interrupts are used so that you can send notification at any moment
+  initWifi(); // Connect to WiFi
+  total_tasks = checkTasks(); // Check tasks for the first time
 }
 
 void loop() {
 
-  unsigned long currentMillis = millis();
+  currentMillis = millis(); // Get milliseconds after powering on
 
-  if (currentMillis - previousMillis >= interval) {
-    previousMillis += interval;
-    total_tasks = checkTasks();
+  if (currentMillis - previousMillis >= interval) { // If interval(ms) have passed then check for tasks
+    previousMillis = millis(); // Assign current millis
+    total_tasks = checkTasks(); // Check for due tasks
   }
-  
-  if(total_tasks.length()>0 && button_state){
-    //Client.stop();
-    pushBullet(total_tasks);
+
+  if(total_tasks.length()>0 && button_state){ // If there are due tasks and the button was pushed..
+    pushBullet(total_tasks); // Send notification
   }
-  
+
 }
 
+
+// ISR: Interrupt Service Routine
 void buttonPressed() {
   Serial.println("Button Pressed");
-  int button = digitalRead(buttonPin);
-  if(button == HIGH)
-  {
-    button_state = true;
+  int button = digitalRead(buttonPin); // Read the current state of the button
+  if(button == HIGH){
+    button_state = true; // If pressed set the state as true
   }
-  return;
+  return; // ISR must return nothing!!!
 }
 
-
+// Check for Due Tasks and return if any
 String checkTasks(){
-  // Use WiFiClient class to create TCP connections
-  WiFiClient Client;
-  
-  Serial.print("Connecting to ");
-  Serial.println(thingspeak_host);
 
-  if (!Client.connect(thingspeak_host, httpPort)) {
+  WiFiClient Client; // Use WiFiClient class to create TCP connections
+
+  Serial.print("Connecting to ");
+  Serial.println(thinghttp_host);
+
+  if (!Client.connect(thinghttp_host, httpPort)) {  // Let you know if connection was unsuccesfull
     Serial.println("Connection failed");
     return "";
   }
-  
-  // We now create a URI for the request
+
+  // Create a URI for the request
+  int value=0; // Used for debugging API Calls
   Serial.print("Requesting URL: ");
-  Serial.println(thingspeak_host + thingspeak_url);
-  Serial.println(String("TRY: ") + value + ".");
-  
-  // This will send the request to the server
-  Client.print(String("GET ") + thingspeak_url + "&headers=false" + " HTTP/1.1\r\n" + "Host: " + thingspeak_host + "\r\n" + "Connection: close\r\n\r\n");
+  Serial.println(thinghttp_host + thinghttp_url);
+  Serial.println(String("Trial #") + value);
+
+  // Send the request to the server
+  Client.print(String("GET ") + thinghttp_url + "&headers=false" + " HTTP/1.1\r\n" + "Host: " + thinghttp_host + "\r\n" + "Connection: close\r\n\r\n");
   delay(500);
-  
-  // Read all the lines of the reply from server and print them to Serial
+
+  // Read the entire response from server and show it on the Serial Monitor
   while(Client.available()){
     String line = Client.readStringUntil('\r');
-
-    Serial.println(".");
+    Serial.print(".");
 
     // JSON Parsing
     DynamicJsonBuffer jsonBuffer;
     JsonObject& root = jsonBuffer.parseObject(line);
 
-    if(root.size()>0){
+    if(root.size()>0){ // If there was a response
+      int num_items = root["items"].size(); // Get total number of tasks
+      String due_tasks = ""; // Every time you get a response is received assume that there are no due tasks
 
-    int num_items = root["items"].size();
+      if(num_items>0){  // If there are tasks
 
-    String due_tasks = "";
-    
-    if(num_items>0){
-      
-      int numNuls = 0;
-      //Loop through all items
-      for(int i=0; i<num_items; i++){
-        
-        String task_time = root["items"][i]["date_string"];
-        
-        if(task_time != "null"){
-          String curr_task = root["items"][i]["content"];
-          String curr_due_date = root["items"][i]["due_date_utc"];
-          String currtime = getTime();
-          checkForgot(curr_due_date, currtime);
-          numNuls+=1;
-          due_tasks += "\n" + curr_task;
-          //pushBullet(curr_task);
-          Serial.println("Task not completed yet!");
+        int numNuls = 0; // Check for tasks with no due date
+
+        for(int i=0; i<num_items; i++){  //Loop through all items
+          if(task_time != "null"){ // If due date was set
+            String curr_task = root["items"][i]["content"]; // Task Content
+            String curr_due_date = root["items"][i]["due_date_utc"]; // Due time in UTC
+            String currtime = getTime(); // Current UTC time
+            checkForgot(curr_due_date, currtime); // Check if bufferTime minutes have passed after you forgot
+            numNuls+=1; // Increment since due date was set
+            due_tasks += "\n" + curr_task; // Construct the Message of the notification to be sent
+            Serial.println("Task not completed yet!");
+          }
         }
-        
-      }
 
-      Client.stop();
+        Client.stop(); // Stop the Client to avoid Soft Reset
 
-      if(numNuls==0){
-        analogWrite(rled, 1023);
-        Serial.println("Due date not set for task(s)");
-        return "";
-        
-      } else if(numNuls!=0 && due_tasks.length()>0){
-        Serial.println("Sent tasks!");
-        return due_tasks;
-      }
+        // Check if there were tasks with due dates and return
+        if(numNuls==0){
+          analogWrite(rled, 1023); // Turn off the LED because you haven't technically forgotten it
+          Serial.println("Due date not set for task(s)");
+          return "";
+        } else if(numNuls!=0 && due_tasks.length()>0){
+          Serial.println("Sent tasks!");
+          return due_tasks;
+        }
+
+      } else{
+          analogWrite(rled, 1023); // Turn off the LED because there are no due tasks
+          Serial.println("No tasks due");
+          return "";
+        }
     }
-    else{
-      analogWrite(rled, 1023);
-      Serial.println("No tasks due");
-      return "";
-    }
-    
- }
   }
-  value = value + 1;
-  //delay(30000);
+  value = value + 1; // Used to know how many trials have passed to get a response
 }
 
+// Send Notification via PushingBox API
 void pushBullet(String message){
-  WiFiClient client;
 
+  WiFiClient pushClient;
   Serial.println("- connecting to pushing server: " + String(logServer));
-  if (client.connect(logServer, 80)) {
+
+  if (pushClient.connect(logServer, httpPort)) {
     Serial.println("- succesfully connected");
-    
+
+    // Constructing the body of POST request
     String postStr = "devid=";
     postStr += String(deviceId);
     postStr += "&message_param=";
     postStr += String(message);
     postStr += "\r\n\r\n";
-    
+
     Serial.println("- sending data...");
-    
-    client.print("POST /pushingbox HTTP/1.1\n");
-    client.print("Host: api.pushingbox.com\n");
-    client.print("Connection: close\n");
-    client.print("Content-Type: application/x-www-form-urlencoded\n");
-    client.print("Content-Length: ");
-    client.print(postStr.length());
-    client.print("\n\n");
-    client.print(postStr);
+
+    // Send request
+    pushClient.print("POST /pushingbox HTTP/1.1\n");
+    pushClient.print("Host: api.pushingbox.com\n");
+    pushClient.print("Connection: close\n");
+    pushClient.print("Content-Type: application/x-www-form-urlencoded\n");
+    pushClient.print("Content-Length: ");
+    pushClient.print(postStr.length());
+    pushClient.print("\n\n");
+    pushClient.print(postStr);
   }
-  client.stop();
+
+  pushClient.stop(); // Stop the client because there's a lot of load on the module
   Serial.println("- stopping the client");
   button_state = false;
 }
 
+/***********Helper Functions**********/
 
+// Check if you forgot the task
 void checkForgot(String duedate, String currtime){
-    duedate.remove(24);
-    duedate.remove(0,4);
-    currtime.remove(0,4);
 
-    if(duedate.substring(0,11) == currtime.substring(0,11)){
-        if(blaSeconds(currtime)-blaSeconds(duedate) >= bufferTime*60){
-           analogWrite(rled, 0);
-        }
-    }
-    
+  // String manipulation of the DateTime strings
+  duedate.remove(24);
+  duedate.remove(0,4);
+  currtime.remove(0,4);
+
+  if( (duedate.substring(0,11) == currtime.substring(0,11)) && (blaSeconds(currtime)-blaSeconds(duedate) >= bufferTime*60) ){   // If the days are the same and bufferTime minutes have passed
+    analogWrite(rled, 0); // Trigger the LED
+  }
 }
 
+// Convert the time into seconds instead of using libraries
 int blaSeconds(String xtime){
-
-    int hour = xtime.substring(12,14).toInt();
-    int mins = xtime.substring(15,17).toInt();
-    int sec = xtime.substring(18,20).toInt();
-
-    return hour*3600 + mins*60 + sec;
-}
+  // Pretty self-explanatory
+  int hour = xtime.substring(12,14).toInt();
+  int mins = xtime.substring(15,17).toInt();
+  int sec = xtime.substring(18,20).toInt();
   
+  return hour*3600 + mins*60 + sec;
+}
+
+// Get current time from HTTP1.1 header
 String getTime() {
   WiFiClient client;
-  while (!!!client.connect("google.com", 80)) {
+
+  while (!!!client.connect("google.com", httpPort)) { // Wait till connection is established and blink the LED
     Serial.println("connection failed, retrying...");
     analogWrite(rled, 0);
-    delay(500);
+    delay(100);
     analogWrite(rled, 1023);
   }
 
-  client.print("HEAD / HTTP/1.1\r\n\r\n");
- 
+  client.print("HEAD / HTTP/1.1\r\n\r\n"); // Send request
+
   while(!!!client.available()) {
-     yield();
+    yield();
   }
 
+  // Read the UTC DateTime
   while(client.available()){
-    if (client.read() == '\n') {    
-      if (client.read() == 'D') {    
-        if (client.read() == 'a') {    
-          if (client.read() == 't') {    
-            if (client.read() == 'e') {    
-              if (client.read() == ':') {    
+    if (client.read() == '\n') {
+      if (client.read() == 'D') {
+        if (client.read() == 'a') {
+          if (client.read() == 't') {
+            if (client.read() == 'e') {
+              if (client.read() == ':') {
                 client.read();
                 String theDate = client.readStringUntil('\r');
                 client.stop();
@@ -243,18 +241,20 @@ String getTime() {
   }
 }
 
+// Connect to WiFi
 void initWifi() {
-   Serial.print("Connecting to ");
-   Serial.print(ssid);
+  Serial.print("Connecting to ");
+  Serial.print(ssid);
 
-   WiFi.begin(ssid, password);
-   
-   while (WiFi.status() != WL_CONNECTED) {
-      analogWrite(rled, 0);
-      delay(500);
-      analogWrite(rled, 1023);
-      Serial.print(".");
-   }
+  WiFi.begin(ssid, password); // Begin WiFI connection
+
+  while (WiFi.status() != WL_CONNECTED) { // Blink the LED while connecting to WiFi
+    analogWrite(rled, 0);
+    delay(100);
+    analogWrite(rled, 1023);
+    Serial.print(".");
+  }
+
   Serial.print("\nWiFi connected, IP address: ");
-  Serial.println(WiFi.localIP());
+  Serial.println(WiFi.localIP()); // Print the IP of NodeMCU, just for fun
 }
