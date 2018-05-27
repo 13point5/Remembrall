@@ -4,20 +4,20 @@
 #include <ArduinoJson.h>
 
 // WiFi credentials
-const char* ssid = "******";                           // TODO: Enter your WiFi ssid
-const char* password = "******";                       // TODO: Enter your WiFi password
+const char* ssid = "************";                    // TODO: Enter your WiFi ssid
+const char* password = "***";                         // TODO: Enter your WiFi password
 
 // ThingHTTP
 const char* thinghttp_host = "api.thinghttp.com";
-String thinghttp_API_KEY = "****************";         // TODO: Enter your ThingHTTP app API key
+String thinghttp_API_KEY = "***************";         // TODO: Enter your ThingHTTP app API key
 String thinghttp_url = "/apps/thinghttp/send_request?api_key=" + thinghttp_API_KEY;
 
 // PushingBox
-String deviceId = "****************";                  // TODO: Enter your PushingBox DeviceID
+String deviceId = "***************";                  // TODO: Enter your PushingBox DeviceID
 const char* logServer = "api.pushingbox.com";
 
 // Button
-const int buttonPin = 12; // Button pin: D6 on NodemCU to send notifications
+const int buttonPin = 12; // Pin D6 on NodeMCU
 volatile bool button_state = false;
 
 // To avoid Soft Reset
@@ -27,7 +27,7 @@ const int interval = 30 * 1000; // The Remembrall checks for due tasks every 30s
 
 // Miscellaneous Declarations
 int bufferTime = 10; // If any task is due after bufferTime(minutes) then the Remembrall will be triggered
-int rled = 14; // LED pin: D5 on NodeMCU used for You_Know_What
+int rled = 13; // LED pin: D7 on NodeMCU used for You_Know_What
 const int httpPort = 80; // Port 80 is used for HTTP requests
 String total_tasks=""; // Stores the tasks that is sent via PushBullet
 
@@ -124,7 +124,7 @@ String checkTasks(){
 
         // Check if there were tasks with due dates and return
         if(numNuls==0){
-          analogWrite(rled, 1023); // Turn off the LED because you haven't technically forgotten it
+          digitalWrite(rled, LOW);; // Turn off the LED because you haven't technically forgotten it
           Serial.println("Due date not set for task(s)");
           return "";
         } else if(numNuls!=0 && due_tasks.length()>0){
@@ -133,7 +133,7 @@ String checkTasks(){
         }
 
       } else{
-          analogWrite(rled, 1023); // Turn off the LED because there are no due tasks
+          digitalWrite(rled, LOW);; // Turn off the LED because there are no due tasks
           Serial.println("No tasks due");
           return "";
         }
@@ -187,7 +187,7 @@ void checkForgot(String duedate, String currtime){
   currtime.remove(0,4);
 
   if( (duedate.substring(0,11) == currtime.substring(0,11)) && (blaSeconds(currtime)-blaSeconds(duedate) >= bufferTime*60) ){   // If the days are the same and bufferTime minutes have passed
-    analogWrite(rled, 0); // Trigger the LED
+    digitalWrite(rled, HIGH);; // Trigger the LED
   }
 }
 
@@ -197,7 +197,7 @@ int blaSeconds(String xtime){
   int hour = xtime.substring(12,14).toInt();
   int mins = xtime.substring(15,17).toInt();
   int sec = xtime.substring(18,20).toInt();
-  
+
   return hour*3600 + mins*60 + sec;
 }
 
@@ -207,9 +207,9 @@ String getTime() {
 
   while (!!!client.connect("google.com", httpPort)) { // Wait till connection is established and blink the LED
     Serial.println("connection failed, retrying...");
-    analogWrite(rled, 0);
+    digitalWrite(rled, HIGH);;
     delay(100);
-    analogWrite(rled, 1023);
+    digitalWrite(rled, LOW);;
   }
 
   client.print("HEAD / HTTP/1.1\r\n\r\n"); // Send request
@@ -249,9 +249,9 @@ void initWifi() {
   WiFi.begin(ssid, password); // Begin WiFI connection
 
   while (WiFi.status() != WL_CONNECTED) { // Blink the LED while connecting to WiFi
-    analogWrite(rled, 0);
+    digitalWrite(rled, HIGH);;
     delay(100);
-    analogWrite(rled, 1023);
+    digitalWrite(rled, LOW);;
     Serial.print(".");
   }
 
